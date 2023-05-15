@@ -7,7 +7,6 @@ const { validationResult } = require("express-validator/check");
 const Product = require("../models/product");
 
 exports.getAddProduct = (req, res, next) => {
-  console.log("HEERRRR");
   res.render("admin/edit-product", {
     pageTitle: "Add Product",
     path: "/admin/add-product",
@@ -27,7 +26,6 @@ exports.postAddProduct = (req, res, next) => {
   console.log("price = ", price);
   console.log("IMAGE = ", image);
   if (!image) {
-    console.log("HERE");
     return res.status(422).render("admin/edit-product", {
       pageTitle: "Add Product",
       path: "/admin/add-product",
@@ -182,7 +180,16 @@ exports.postEditProduct = (req, res, next) => {
 };
 
 exports.getProducts = (req, res, next) => {
-  Product.find({ userId: req.user._id })
+  const page = +req.query.page || 1;
+  let TotalItems;
+  const ITEMS_PER_PAGE = 2;
+    Product.find({ userId: req.user._id }).countDocuments()
+    .then((numProducts) => {
+      TotalItems = numProducts;
+      return Product.find({ userId: req.user._id })
+        .skip((page - 1) * ITEMS_PER_PAGE)
+        .limit(ITEMS_PER_PAGE);
+    })
     // .select('title price -_id')
     // .populate('userId', 'name')
     .then((products) => {
@@ -191,6 +198,12 @@ exports.getProducts = (req, res, next) => {
         prods: products,
         pageTitle: "Admin Products",
         path: "/admin/products",
+        currentPage: page,
+        hasNextPage: page * ITEMS_PER_PAGE < TotalItems,
+        hasPreviousPage: page > 1,
+        previousPage: page - 1,
+        nextPage: page + 1,
+        lastPage: Math.ceil(TotalItems / ITEMS_PER_PAGE),
       });
     })
     .catch((err) => {
@@ -198,6 +211,23 @@ exports.getProducts = (req, res, next) => {
       error.httpStatusCode = 500;
       return next(error);
     });
+
+  // Product.find({ userId: req.user._id })
+  //   // .select('title price -_id')
+  //   // .populate('userId', 'name')
+  //   .then((products) => {
+  //     console.log(products);
+  //     res.render("admin/products", {
+  //       prods: products,
+  //       pageTitle: "Admin Products",
+  //       path: "/admin/products",
+  //     });
+  //   })
+  //   .catch((err) => {
+  //     const error = new Error(err);
+  //     error.httpStatusCode = 500;
+  //     return next(error);
+  //   });
 };
 
 exports.deleteProduct = (req, res, next) => {
@@ -220,5 +250,26 @@ exports.deleteProduct = (req, res, next) => {
       // error.httpStatusCode = 500;
       // return next(error);
       res.status(500).json({ message: "Deleting Product Failed" });
+    });
+};
+
+exports.postDeleteProduct = (req, res, next) => {
+  const prodId = req.body.productId;
+  Product.findById(prodId)
+    .then((product) => {
+      if (!product) {
+        return next(new Error("Product Not FOund"));
+      }
+      filehelper.fileDelete(product.imageUrl);
+      return Product.deleteOne({ _id: prodId, userId: req.user._id });
+    })
+    .then(() => {
+      console.log("DESTROYED PRODUCT");
+      res.redirect("/admin/products");
+    })
+    .catch((err) => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
     });
 };
